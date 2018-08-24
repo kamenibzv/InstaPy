@@ -3,7 +3,6 @@ import json
 import datetime
 import os
 import re
-import random
 import sqlite3
 import time
 import signal
@@ -12,12 +11,25 @@ from contextlib import contextmanager
 from selenium.common.exceptions import NoSuchElementException
 from selenium.common.exceptions import WebDriverException
 
-from .settings import Settings
 from .time_util import sleep
 from .time_util import sleep_actual
-from .database_engine import get_db
+from .database_engine import get_database
 
 
+
+def is_private_profile(browser, logger, following=True):
+    is_private = None
+    is_private = browser.execute_script(
+        "return window._sharedData.entry_data."
+        "ProfilePage[0].graphql.user.is_private")
+    # double check with xpath that should work only when we not follwoing a user
+    if is_private is True and not following:
+        logger.info("Is private account you're not following.")
+        body_elem = browser.find_element_by_tag_name('body')
+        is_private = body_elem.find_element_by_xpath(
+            '//h2[@class="_kcrwx"]')
+
+    return is_private
 
 def validate_username(browser,
                       username_or_link,
@@ -137,7 +149,7 @@ def update_activity(action=None):
         comments, follows, unfollow). """
 
     # get a DB and start a connection
-    db, id = get_db()
+    db, id = get_database()
     conn = sqlite3.connect(db)
 
     with conn:
@@ -372,7 +384,7 @@ def delete_line_from_file(filepath, lineToDelete, logger):
 
         f = open(file_path_Temp, "w")
         for line in lines:
-            if not line.endswith(lineToDelete):
+            if (line.find(lineToDelete) < 0):
                 f.write(line)
             else:
                 logger.info("\tRemoved '{}' from followedPool.csv file".format(line.split(',\n')[0]))
@@ -657,7 +669,7 @@ def dump_record_activity(profile_name, logger, logfolder):
 
     try:
         # get a DB and start a connection
-        db, id = get_db()
+        db, id = get_database()
         conn = sqlite3.connect(db)
 
         with conn:
